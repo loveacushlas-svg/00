@@ -129,6 +129,12 @@
     .gf-order-mode .tile.gf-drop-target{box-shadow:0 0 0 3px var(--accent)}
     .gf-order-mode .gf-edit-icon{pointer-events:none}
     .gf-order-mode .tile[data-tab="more"]{opacity:.7}
+    /* V7：設定中的紀錄選擇可拖曳排序，鎖定時維持正常勾選操作 */
+    .gf-settings-sortable .settings-service{touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;border:1px dashed var(--accent);border-radius:12px;padding:12px;margin:5px 0;background:var(--panel)}
+    .gf-settings-sortable .settings-service::before{content:'☰';color:var(--accent);font-size:20px;margin-right:4px}
+    .gf-settings-sortable .settings-service.gf-drop-target{box-shadow:0 0 0 3px var(--accent)}
+    .gf-settings-sortable .settings-service.gf-dragging{opacity:.45}
+    .gf-settings-sortable input[type=checkbox]{pointer-events:none}
   </style>
 </head>
 <body>
@@ -167,7 +173,7 @@
   const serviceEnabled=id=>serviceVisibility[id]!==false;
   const serviceForPage=id=>({subscriptionDetail:'subscriptions',foodDayDetail:'foods'})[id]||id;
   const serviceTiles=html=>html.replace(/<button\b[^>]*data-tab="(tasks|habits|subscriptions|journal|trips|car|reports|foods)"[^>]*>[\s\S]*?<\/button>/g,(markup,id)=>serviceEnabled(id)?markup:'');
-  function settings(){return `<div class="section-head"><h2>設定</h2></div><div class="card"><h3>記錄選擇</h3><p class="subtle">勾選代表啟用，取消勾選則隱藏 App 中的對應服務入口與首頁內容。既有紀錄不會刪除，重新勾選即可恢復顯示。</p><div class="settings-services">${serviceOptions.map(([id,label])=>`<label class="settings-service"><span>${label}</span><input type="checkbox" data-service-toggle="${id}" ${serviceEnabled(id)?'checked':''} aria-label="顯示${label}"></label>`).join('')}</div></div>`;}
+  function settings(){return `<div class="section-head"><h2>設定</h2></div><div class="card"><h3>記錄選擇</h3><p class="subtle">勾選代表啟用，取消勾選則隱藏 App 中的對應服務入口與首頁內容。既有紀錄不會刪除，重新勾選即可恢復顯示。</p>${gfOrderToolbar()}<p class="subtle">此處的排序決定首頁快速入口的前三項（僅計入已勾選功能）；「更多功能」的排列不再決定首頁入口。</p><div class="settings-services ${gfOrderUnlocked?'gf-settings-sortable':''}">${[...serviceOptions].sort((a,b)=>gfOrder.indexOf(a[0])-gfOrder.indexOf(b[0])).map(([id,label])=>`<label class="settings-service" data-gf-service-id="${id}"><span>${label}</span><input type="checkbox" data-service-toggle="${id}" ${serviceEnabled(id)?'checked':''} aria-label="顯示${label}"></label>`).join('')}</div></div>`;}
   const tabs=[['home','⌂','首頁']];
   function openDB(){return new Promise((resolve,reject)=>{const req=indexedDB.open(DB_NAME,DB_VERSION);req.onupgradeneeded=()=>{const d=req.result;if(!d.objectStoreNames.contains(STORE))d.createObjectStore(STORE,{keyPath:'key'});};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});}
   function readAll(){return new Promise((resolve,reject)=>{const tx=db.transaction(STORE,'readonly'),req=tx.objectStore(STORE).get('appdata');req.onsuccess=()=>resolve(req.result?.value||null);req.onerror=()=>reject(req.error);});}
@@ -214,20 +220,48 @@
   let gfOrder=gfDefaultOrder.slice(),gfOrderUnlocked=false;
   try{const saved=JSON.parse(localStorage.getItem(gfOrderKey)||'null');if(Array.isArray(saved))gfOrder=[...new Set(saved.filter(id=>gfDefaultOrder.includes(id))),...gfDefaultOrder.filter(id=>!saved.includes(id))];}catch(e){}
   function gfOrderSave(){try{localStorage.setItem(gfOrderKey,JSON.stringify(gfOrder));}catch(e){alert('排序無法儲存，請檢查瀏覽器儲存空間。');}}
-  function gfOrderToolbar(){return `<div class="gf-order-toolbar"><span class="subtle">${gfOrderUnlocked?'編輯中：按住功能卡片拖曳至新位置，完成後請鎖定。':'功能順序已鎖定，避免誤觸。'}</span><button type="button" class="btn small ${gfOrderUnlocked?'primary':''}" data-gf-order-toggle>${gfOrderUnlocked?'🔓 完成並鎖定':'🔒 解鎖排序'}</button></div>`;}
+  function gfOrderToolbar(){return `<div class="gf-order-toolbar"><span class="subtle">${gfOrderUnlocked?'編輯中：按住項目拖曳至新位置，完成後請鎖定。':'功能順序已鎖定，避免誤觸。'}</span><button type="button" class="btn small ${gfOrderUnlocked?'primary':''}" data-gf-order-toggle>${gfOrderUnlocked?'🔓 完成並鎖定':'🔒 解鎖排序'}</button></div>`;}
   function gfSortTiles(){
-    const view=$('#view');if(!view||!['home','more'].includes(currentTab))return;
+    const view=$('#view');if(!view||currentTab!=='home')return;
     const grids=[...view.querySelectorAll('.grid')].filter(g=>g.querySelector('.tile[data-tab]'));
     for(const grid of grids){const tiles=[...grid.children].filter(x=>x.matches('.tile[data-tab]'));const sortable=tiles.filter(x=>gfDefaultOrder.includes(x.dataset.tab));sortable.sort((a,b)=>gfOrder.indexOf(a.dataset.tab)-gfOrder.indexOf(b.dataset.tab));
       const more=tiles.find(x=>x.dataset.tab==='more');for(const tile of sortable)grid.appendChild(tile);if(more)grid.appendChild(more);
       grid.classList.toggle('gf-order-mode',gfOrderUnlocked);
       if(gfOrderUnlocked)for(const tile of sortable)tile.setAttribute('aria-label',tile.textContent.trim()+'，可拖曳調整順序');
     }
-    const header=view.querySelector('.section-head h2');if(header&&(currentTab==='home'||currentTab==='more')){const toolbar=document.createElement('div');toolbar.innerHTML=gfOrderToolbar();header.closest('.section-head').after(toolbar.firstElementChild);}
+    const header=view.querySelector('.section-head h2');if(header&&currentTab==='home'){const toolbar=document.createElement('div');toolbar.innerHTML=gfOrderToolbar();header.closest('.section-head').after(toolbar.firstElementChild);}
   }
+  // V7：設定「紀錄選擇」是首頁前三入口的排序依據；保留 V6 排序儲存鍵，避免升級遺失設定。
+  let gfSettingsDrag=null;
+  document.addEventListener('pointerdown',e=>{
+    if(!gfOrderUnlocked||currentTab!=='settings')return;
+    const row=e.target.closest('#view .gf-settings-sortable [data-gf-service-id]');
+    if(!row)return;
+    e.preventDefault();gfSettingsDrag={id:row.dataset.gfServiceId,el:row,pointer:e.pointerId,x:e.clientX,y:e.clientY,moved:false};
+    row.classList.add('gf-dragging');try{row.setPointerCapture(e.pointerId);}catch(err){}
+  },true);
+  document.addEventListener('pointermove',e=>{
+    if(!gfSettingsDrag||e.pointerId!==gfSettingsDrag.pointer)return;
+    if(Math.hypot(e.clientX-gfSettingsDrag.x,e.clientY-gfSettingsDrag.y)>8)gfSettingsDrag.moved=true;
+    document.querySelectorAll('.gf-settings-sortable .gf-drop-target').forEach(x=>x.classList.remove('gf-drop-target'));
+    const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('#view .gf-settings-sortable [data-gf-service-id]');
+    if(target&&target!==gfSettingsDrag.el)target.classList.add('gf-drop-target');
+  },true);
+  document.addEventListener('pointerup',e=>{
+    if(!gfSettingsDrag||e.pointerId!==gfSettingsDrag.pointer)return;
+    const drag=gfSettingsDrag;gfSettingsDrag=null;
+    const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('#view .gf-settings-sortable [data-gf-service-id]');
+    document.querySelectorAll('.gf-settings-sortable .gf-drop-target,.gf-settings-sortable .gf-dragging').forEach(x=>x.classList.remove('gf-drop-target','gf-dragging'));
+    if(!drag.moved||!target||target===drag.el)return;
+    const from=gfOrder.indexOf(drag.id),to=gfOrder.indexOf(target.dataset.gfServiceId);
+    if(from<0||to<0)return;
+    gfOrder.splice(from,1);gfOrder.splice(to,0,drag.id);gfOrderSave();render();
+  },true);
+  document.addEventListener('pointercancel',()=>{gfSettingsDrag=null;document.querySelectorAll('.gf-settings-sortable .gf-drop-target,.gf-settings-sortable .gf-dragging').forEach(x=>x.classList.remove('gf-drop-target','gf-dragging'));},true);
+  document.addEventListener('click',e=>{if(gfOrderUnlocked&&currentTab==='settings'&&e.target.closest('#view .gf-settings-sortable [data-gf-service-id]')){e.preventDefault();e.stopImmediatePropagation();}},true);
   let gfDrag=null;
   document.addEventListener('pointerdown',e=>{
-    if(!gfOrderUnlocked||!['home','more'].includes(currentTab))return;
+    if(!gfOrderUnlocked||currentTab!=='home')return;
     const tile=e.target.closest('#view .gf-order-mode .tile[data-tab]');if(!tile||!gfDefaultOrder.includes(tile.dataset.tab))return;
     e.preventDefault();gfDrag={id:tile.dataset.tab,el:tile,pointer:e.pointerId,x:e.clientX,y:e.clientY,moved:false};tile.classList.add('gf-dragging');try{tile.setPointerCapture(e.pointerId);}catch(err){}
   },true);
