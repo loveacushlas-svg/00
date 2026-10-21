@@ -1,4 +1,4 @@
-const CACHE='personal-secretary-girlfriend-v4';
+const CACHE='00-girlfriend-v8';
 const ASSETS=['./','./index.html','./manifest.webmanifest','./icon.svg'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()));});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('personal-secretary-girlfriend-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()));});
